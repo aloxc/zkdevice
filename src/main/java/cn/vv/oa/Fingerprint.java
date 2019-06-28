@@ -1,4 +1,4 @@
-package oa;
+package cn.vv.oa;
 
 /**
  * @author liyonghua@vv.cn

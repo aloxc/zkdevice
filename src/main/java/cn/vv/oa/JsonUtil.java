@@ -1,4 +1,4 @@
-package oa;
+package cn.vv.oa;
 import org.apache.commons.lang3.StringUtils;
 import org.codehaus.jackson.JsonFactory;
 import org.codehaus.jackson.JsonNode;

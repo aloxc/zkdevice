@@ -1,4 +1,4 @@
-package oa;
+package cn.vv.oa;
 
 import com.jacob.activeX.ActiveXComponent;
 import com.jacob.com.Dispatch;
@@ -10,10 +10,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -25,61 +22,62 @@ import java.util.*;
  */
 public class Application {
     private static ActiveXComponent zkem;
+
     public static void main(String[] args) throws Exception {
         int flag = 0;
-        if(args.length == 0){
-            System.out.println("please input an operation flag[number]:");
-            System.out.println("\t\t\t1: send user list to attendance device");
-            System.out.println("\t\t\t2: backup all data");
-            System.out.println("\t\t\t3: recover user and fingerprint list");
-            InputStream in = System.in;
-            flag = in.read();
-        }else{
-            try{
-                flag = Integer.parseInt(args[0]);
-            }catch (Exception e){
-                System.out.println("argument should be a number.");
-                System.exit(1);
-            }
-        }
-        if(flag<1 || flag >3){
-            System.out.println("please rerun");
+        System.out.println("please input an operation flag[number]:");
+        System.out.println("\t1: send user list to attendance device");
+        System.out.println("\t2: backup all data");
+        System.out.println("\t3: recover user and fingerprint list");
+        InputStream in = System.in;
+        InputStreamReader is = new InputStreamReader(in); //new构造InputStreamReader对象
+        BufferedReader br = new BufferedReader(is); //拿构造的方法传到BufferedReader中，此时获取到的就是整个缓存流
+        flag = Integer.parseInt(br.readLine());
+        if (flag < 1 || flag > 3) {
+            System.out.println("please rerun " + flag);
             System.exit(1);
         }
-        if(flag ==1 ){
+        System.out.println("please input a device ip:");
+        String ip = br.readLine();
+        ip = ip.trim();
+        System.out.println("please input a device port:");
+        int port = Integer.parseInt(br.readLine());
+        zkem = new ActiveXComponent("zkemkeeper.zkem.1");
+        boolean connect_net = zkem.invoke("Connect_NET", ip, port).getBoolean();
+        System.out.println("考勤机连接" + (connect_net ? "成功":"失败"));
+        if(!connect_net)return;
+        if (flag == 1) {
             initUser();
-        }else if(flag == 2){
+        } else if (flag == 2) {
             backupData();
-        }else if(flag == 3){
+        } else if (flag == 3) {
             recoverData();
         }
 
-        zkem = new ActiveXComponent("zkemkeeper.zkem.1");
-        zkem.invoke("Connect_NET", "172.16.12.10", 80).getBoolean();
+        zkem.invoke("Disconnect").getBoolean();
+        System.exit(1);
 
     }
 
-    private static void initUser() throws Exception{
+    private static void initUser() throws Exception {
         String path = "d:\\vvoa\\singaporevvuserlist.xlsx";
-        FileInputStream fis =null;
+        FileInputStream fis = null;
         Workbook wookbook = null;
         fis = new FileInputStream(path);
         wookbook = new XSSFWorkbook(fis);//得到工作簿
         //得到一个工作表
         Sheet sheet = wookbook.getSheet("list");
-        int rowStart  = 1;
+        int rowStart = 1;
         int rowEnd = 29;
-        for (int rIndex = rowStart; rIndex < rowEnd ; rIndex++) {
+        for (int rIndex = rowStart; rIndex < rowEnd; rIndex++) {
             Row row = sheet.getRow(rIndex);
             String name = row.getCell(2).getStringCellValue();
             String no = row.getCell(4).getStringCellValue();
-            setUserInfo(no,name,"",Privilege.General.getFlag(),true);
+            setUserInfo(no, name, "", Privilege.General.getFlag(), true);
             System.out.println(no + "\t" + name);
         }
         clearAdministrators();
     }
-
-
 
 
     public static boolean powerOffDevice() {
@@ -90,16 +88,18 @@ public class Application {
 
     /**
      * 读取最后的错误信息
+     *
      * @return
      */
     public static int getLastError() {
-        Variant v0 = new Variant((int)1,true);
+        Variant v0 = new Variant((int) 1, true);
         zkem.invoke("GetLastError", v0);
         return v0.getIntRef();
     }
 
     /**
      * 重启设备
+     *
      * @return
      */
     public static boolean restartDevice() {
@@ -107,80 +107,80 @@ public class Application {
         boolean result = zkem.invoke("RestartDevice", v0).getBoolean();
         return result;
     }
+
     /**
      * 读取机器是否支持门禁功能，为0是代表没有门禁功能， 1为简单门禁，2为中级门禁，6为高级门禁，14为高级门禁+常开功能,15为高级门禁
+     *
      * @return
      */
     public static boolean getACFun() {
-        Variant lock = new Variant(0,true);
+        Variant lock = new Variant(0, true);
         boolean result = zkem.invoke("GetACFun", lock).getBoolean();
-        System.out.println("是否支持门禁功能"+lock.getIntRef());
+        System.out.println("是否支持门禁功能" + lock.getIntRef());
         return result;
     }
 
 
-
-
     /**
      * 从备份文件中恢复数据
+     *
      * @throws IOException
      */
     private static void recoverData() throws IOException {
-        File file = new File("c:\\zkdata.txt");
-        if(!file.exists()){
+        File file = new File("d:\\vvoa\\zkdata.txt");
+        if (!file.exists()) {
             System.out.println("备份文件不存在");
             return;
         }
         List<String> list = FileUtils.readLines(file, Charset.forName("utf-8"));
 
-        for (String line : list){
+        for (String line : list) {
             String json = line.split("====")[1];
-            if(line.startsWith("userList")){
+            if (line.startsWith("userList")) {
                 List<User> userList = JsonUtil.toBeanList(json, User.class);
-                for(User user : userList){
-                    setUserInfo(user.getUserId(),user.getName(),user.getPassword(),user.getPrivilege().getFlag(),user.isEnabled());
+                for (User user : userList) {
+                    setUserInfo(user.getUserId(), user.getName(), user.getPassword(), user.getPrivilege().getFlag(), user.isEnabled());
                 }
-            }else if(line.startsWith("fingerprint___")){
-                List<Fingerprint> fingerprintList = JsonUtil.toBeanList(json,Fingerprint.class);
-                String userId = line.split("====")[0].replace("fingerprint___","");
-                for(Fingerprint fingerprint : fingerprintList){
-                    setFingerprint(userId,fingerprint);
+            } else if (line.startsWith("fingerprint___")) {
+                List<Fingerprint> fingerprintList = JsonUtil.toBeanList(json, Fingerprint.class);
+                String userId = line.split("====")[0].replace("fingerprint___", "");
+                for (Fingerprint fingerprint : fingerprintList) {
+                    setFingerprint(userId, fingerprint);
                 }
-            }else if(line.startsWith("face___")){
-                String userId = line.split("====")[0].replace("face___","");
-                setUserFace(userId,json);
+            } else if (line.startsWith("face___")) {
+                String userId = line.split("====")[0].replace("face___", "");
+                setUserFace(userId, json);
             }
         }
         System.out.println("恢复完毕");
     }
 
     private static void backupData() throws IOException {
-        File file = new File("c:\\zkdata.txt");
-        System.out.println("备份文件路径"+ file.getAbsolutePath());
-        if(file.exists()){
+        File file = new File("d:\\vvoa\\zkdata.txt");
+        System.out.println("备份文件路径" + file.getAbsolutePath());
+        if (file.exists()) {
             file.delete();
         }
         file.createNewFile();
         String key = "userList";
         List<User> userList = getUserList();
-        FileUtils.writeStringToFile(file,key + "====" + JsonUtil.toJson(userList),Charset.forName("utf-8"),true);
-        FileUtils.writeStringToFile(file,"\n",Charset.forName("utf-8"),true);
-        for (User user : userList){
+        FileUtils.writeStringToFile(file, key + "====" + JsonUtil.toJson(userList), Charset.forName("utf-8"), true);
+        FileUtils.writeStringToFile(file, "\n", Charset.forName("utf-8"), true);
+        for (User user : userList) {
             List<Fingerprint> fingerprintList = getFingerprintList(user.getUserId());
-            if(fingerprintList != null) {
+            if (fingerprintList != null) {
                 key = "fingerprint___" + user.getUserId();
-                FileUtils.writeStringToFile(file, key + "====" + JsonUtil.toJson(fingerprintList), Charset.forName("utf-8"),true);
-                FileUtils.writeStringToFile(file, "\n", Charset.forName("utf-8"),true);
+                FileUtils.writeStringToFile(file, key + "====" + JsonUtil.toJson(fingerprintList), Charset.forName("utf-8"), true);
+                FileUtils.writeStringToFile(file, "\n", Charset.forName("utf-8"), true);
             }
             String userFace = getUserFace(user.getUserId());
-            if(userFace != null) {
+            if (userFace != null) {
                 key = "face___" + user.getUserId();
-                FileUtils.writeStringToFile(file, key + "====" + userFace, Charset.forName("utf-8"),true);
-                FileUtils.writeStringToFile(file, "\n", Charset.forName("utf-8"),true);
+                FileUtils.writeStringToFile(file, key + "====" + userFace, Charset.forName("utf-8"), true);
+                FileUtils.writeStringToFile(file, "\n", Charset.forName("utf-8"), true);
             }
         }
     }
-
 
 
     /**
@@ -195,29 +195,32 @@ public class Application {
 
     /**
      * 开锁
+     *
      * @return
      */
     public static boolean acUnlock() {
         Variant devNum = new Variant(1);
         Variant delay = new Variant(10);
-        boolean result = zkem.invoke("ACUnlock",devNum,delay).getBoolean();
+        boolean result = zkem.invoke("ACUnlock", devNum, delay).getBoolean();
         return result;
     }
 
     /**
      * 读取序列号
+     *
      * @return
      */
     public static String getSerialNumber() {
         Variant devNum = new Variant(1);
-        Variant sSerialNumber = new Variant("",true);
-        boolean result = zkem.invoke("GetSerialNumber", devNum,sSerialNumber).getBoolean();
+        Variant sSerialNumber = new Variant("", true);
+        boolean result = zkem.invoke("GetSerialNumber", devNum, sSerialNumber).getBoolean();
         String serialNumber = null;
-        if(result) {
+        if (result) {
             serialNumber = sSerialNumber.getStringRef();
         }
         return serialNumber;
     }
+
     /**
      * 删除时间段内的打卡记录
      *
@@ -319,6 +322,7 @@ public class Application {
 
     /**
      * 读取考勤机时间
+     *
      * @return
      */
     public static Date getDeviceTime() {
@@ -334,16 +338,17 @@ public class Application {
         Variant vResult = Dispatch.call(zkem, "GetDeviceTime", dwMachineNumber, dwYear, dwMonth, dwDay, dwHour, dwMinute, dwSecond);
         newresult = vResult.getBoolean();
         if (newresult) {
-            date = new Date(dwYear.getIntRef() - 1900, dwMonth.getIntRef() -1, dwDay.getIntRef(), dwHour.getIntRef(), dwMinute.getIntRef(), dwSecond.getIntRef());
+            date = new Date(dwYear.getIntRef() - 1900, dwMonth.getIntRef() - 1, dwDay.getIntRef(), dwHour.getIntRef(), dwMinute.getIntRef(), dwSecond.getIntRef());
         }
         return date;
     }
 
     /**
      * 读取考勤机时间
+     *
      * @return
      */
-    public static boolean setDeviceTime(int year,int month,int day,int hour,int minute,int second) {
+    public static boolean setDeviceTime(int year, int month, int day, int hour, int minute, int second) {
         Variant dwMachineNumber = new Variant(1, true);//机器号
         Variant dwYear = new Variant(year, true);
         Variant dwMonth = new Variant(month, true);
@@ -356,6 +361,7 @@ public class Application {
         newresult = vResult.getBoolean();
         return newresult;
     }
+
     /**
      * 获取用户信息
      *
@@ -412,6 +418,7 @@ public class Application {
 
     /**
      * 刷新机器内数据，一般在上传用户信息或指纹后调用，这样能使所作的修改立即起作用，起到同步作用
+     *
      * @return
      */
     public static boolean refreshData() {
@@ -422,6 +429,7 @@ public class Application {
 
     /**
      * 清除机器里面所有管理人员权限
+     *
      * @return
      */
     public static boolean clearAdministrators() {
@@ -429,6 +437,7 @@ public class Application {
         boolean result = zkem.invoke("ClearAdministrators", v0).getBoolean();
         return result;
     }
+
     /**
      * 设置用户信息
      *
@@ -442,7 +451,7 @@ public class Application {
     public static boolean setUserInfo(String number, String name, String password, int isPrivilege, boolean enabled) {
         Variant v0 = new Variant(1);
         Variant sdwEnrollNumber = new Variant(number, true);
-        Variant sName = new Variant(name,false);
+        Variant sName = new Variant(name, false);
         Variant sPassword = new Variant(password, true);
         Variant iPrivilege = new Variant(isPrivilege, true);
         Variant bEnabled = new Variant(enabled, true);
@@ -516,18 +525,17 @@ public class Application {
             Variant lenV = new Variant(0, true);
             boolean result = zkem.invoke("GetUserTmpExStr", v0, sdwEnrollNumber, indexV, flagV, tempV, lenV).getBoolean();
             if (result) {
-                fingerprintList.add(new Fingerprint(i, tempV.getStringRef(),flagV.getIntRef()));
+                fingerprintList.add(new Fingerprint(i, tempV.getStringRef(), flagV.getIntRef()));
             }
         }
         return fingerprintList;
     }
 
     /**
-     *
      * @param fingerprint
      * @return
      */
-    public static boolean setFingerprint(String userId,Fingerprint fingerprint) {
+    public static boolean setFingerprint(String userId, Fingerprint fingerprint) {
         Variant v0 = new Variant(1L);
         Variant sdwEnrollNumber = new Variant(userId, true);
         Variant indexV = new Variant((long) fingerprint.getIndex(), true);
@@ -540,6 +548,7 @@ public class Application {
 
     /**
      * 读取用户的面部识别数据
+     *
      * @param userId
      * @return
      */
@@ -560,16 +569,17 @@ public class Application {
 
     /**
      * 更新用户的面部识别数据
+     *
      * @param userId
      * @param face
      * @return
      */
-    public static boolean setUserFace(String userId,String face) {
+    public static boolean setUserFace(String userId, String face) {
         Variant v0 = new Variant(1L);
         Variant sdwEnrollNumber = new Variant(userId, true);
         Variant indexV = new Variant((long) 0, true);
         Variant faceV = new Variant(face, true);
-        Variant lenV = new Variant((long)face.length(), true);
+        Variant lenV = new Variant((long) face.length(), true);
         boolean result = zkem.invoke("SetUserFaceStr", v0, sdwEnrollNumber, indexV, faceV, lenV).getBoolean();
         return result;
     }
